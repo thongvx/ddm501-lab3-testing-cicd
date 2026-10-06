@@ -1,0 +1,459 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>DDM501 Lab 3 Submission</title>
+<style>
+@page { size: A4; margin: 16mm 15mm 17mm 15mm;
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9pt Helvetica; color:#666; }
+  @bottom-left { content: "DDM501 Lab 3 – Testing & CI/CD – Vương Xuân Thong (25MS13306)"; font: 9pt Helvetica; color:#666; } }
+@page :first { @bottom-right { content: none; } @bottom-left { content: none; } }
+html { font: 10pt/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif; color:#1d2433; }
+h1 { font-size: 24pt; color:#0f2747; margin: 0 0 4mm; }
+h2 { font-size: 14pt; color:#0f2747; border-bottom: 2px solid #1f5fa8; padding-bottom: 3pt; margin: 16pt 0 7pt; break-after: avoid; }
+h3 { font-size: 11.5pt; color:#0f2747; margin: 11pt 0 4pt; break-after: avoid; }
+table { width:100%; border-collapse: collapse; font-size: 8.8pt; margin: 4pt 0 9pt; }
+th, td { border:1px solid #d5dae3; padding: 3pt 5pt; text-align:left; vertical-align: top; }
+th { background:#eef3fa; } tr { break-inside: avoid; }
+code { font: 8.4pt Menlo, monospace; background:#f3f5f8; padding: 0 2pt; }
+pre { background:#f7f8fb; border:1px solid #d9dee8; padding: 6pt; font: 7.8pt/1.35 Menlo, monospace; white-space: pre-wrap; break-inside: avoid; }
+pre code { background:none; padding:0; }
+figure { margin: 6pt 0 12pt; break-inside: avoid; text-align:center; }
+figure img { max-width:100%; max-height: 225mm; border:1px solid #d5dae3; }
+figcaption { font-size: 8.8pt; color:#5b6475; margin-top: 3pt; }
+.cover { height: 255mm; display:flex; flex-direction:column; justify-content:center; border-top: 6px solid #1f5fa8; }
+.cover td:first-child { color:#5b6475; width: 30%; } .cover table { font-size: 10.5pt; width: 85%; }
+.pb { break-before: page; } .ok { color:#15803d; font-weight:700; }
+</style></head><body>
+<section class="cover">
+  <div style="color:#1f5fa8;font-weight:600;letter-spacing:.08em">DDM501 · AI IN PRODUCTION: FROM MODELS TO SYSTEMS</div>
+  <h1 style="margin-top:6mm">Lab 3 – Testing &amp; CI/CD for ML Systems</h1>
+  <div style="font-size:13pt;color:#5b6475;margin-bottom:10mm">Movie Rating Prediction API (FastAPI + SVD, MovieLens 100K)</div>
+  <table>
+    <tr><td>Student</td><td>Vương Xuân Thong</td></tr>
+    <tr><td>Student ID</td><td>25MS13306</td></tr>
+    <tr><td>Repository</td><td><a href="https://github.com/thongvx/ddm501-lab3-testing-cicd">https://github.com/thongvx/ddm501-lab3-testing-cicd</a></td></tr>
+    <tr><td>CI status</td><td><a href="https://github.com/thongvx/ddm501-lab3-testing-cicd/actions">https://github.com/thongvx/ddm501-lab3-testing-cicd/actions</a> – all workflows passing</td></tr>
+    <tr><td>Release</td><td><a href="https://github.com/thongvx/ddm501-lab3-testing-cicd/releases/tag/v1.0.0">v1.0.0</a> · image <code>ghcr.io/thongvx/movie-rating-api:1.0.0</code></td></tr>
+    <tr><td>Submission date</td><td>October 2026</td></tr>
+  </table>
+</section>
+
+<h2 class="pb">1. Deliverables vs. grading rubric</h2>
+<table>
+<tr><th style="width:24%">Criterion</th><th>Evidence</th><th style="width:9%">Status</th></tr>
+<tr><td>Unit tests (10%)</td><td>63 tests: model wrapper (real + isolated stub model), schemas, config, helpers – <code>tests/unit/</code></td><td class="ok">✔</td></tr>
+<tr><td>Integration tests (8%)</td><td>44 tests: all endpoints, 404/405/422/500/503, batch, CORS, latency – <code>tests/integration/</code></td><td class="ok">✔</td></tr>
+<tr><td>Data tests (6%)</td><td>32 tests: sample fixture + real MovieLens 100K data contract – <code>tests/data/</code></td><td class="ok">✔</td></tr>
+<tr><td>Model behavioural tests (6%)</td><td>23 tests: invariance, directional, minimum functionality, performance, robustness – <code>tests/model/</code></td><td class="ok">✔</td></tr>
+<tr><td>CI workflow works (12%)</td><td><code>ci.yml</code>: lint (pre-commit) · mypy → tests on Python 3.10 &amp; 3.11 → Docker build + smoke test (Fig. 2–3)</td><td class="ok">✔</td></tr>
+<tr><td>All checks pass (10%)</td><td>Every run green on <code>main</code>, <code>develop</code> and tag <code>v1.0.0</code>; badges "passing" (Fig. 1–2)</td><td class="ok">✔</td></tr>
+<tr><td>CD workflow configured (8%)</td><td><code>cd.yml</code>: CI gate → push to GHCR → staging smoke test → GitHub Release → production; plus <code>model-validation.yml</code> (Fig. 4–6)</td><td class="ok">✔</td></tr>
+<tr><td>Pre-commit hooks (8%)</td><td>hygiene hooks, black, isort, flake8, mypy, local pytest hook; same hooks run in CI</td><td class="ok">✔</td></tr>
+<tr><td>Linting passes (6%)</td><td>black, isort, flake8 – 0 issues (CI job "Lint")</td><td class="ok">✔</td></tr>
+<tr><td>Type hints (6%)</td><td>all of <code>app/</code> and <code>scripts/</code> typed; <code>mypy --disallow-untyped-defs</code> 0 errors</td><td class="ok">✔</td></tr>
+<tr><td>Testing strategy doc (10%)</td><td><code>docs/TESTING_STRATEGY.md</code> (section 3 of this document)</td><td class="ok">✔</td></tr>
+<tr><td>README updated (5%)</td><td>badges, structure, how to run/test/release, CI/CD table, screenshots, changes to starter</td><td class="ok">✔</td></tr>
+<tr><td>Coverage report (5%)</td><td>100% line coverage (minimum 80% enforced), HTML report artifact, <code>docs/COVERAGE.md</code> (Fig. 7)</td><td class="ok">✔</td></tr>
+</table>
+
+<h2>2. Screenshots of passing CI workflows</h2>
+<figure><img src="../docs/screenshots/01_repo_readme_badges.png"><figcaption>Figure 1. Repository with passing CI / CD / Model Validation badges</figcaption></figure><figure><img src="../docs/screenshots/02_actions_all_workflows.png"><figcaption>Figure 2. All workflow runs green (main, develop, tag v1.0.0)</figcaption></figure><figure><img src="../docs/screenshots/03_ci_pipeline_run.png"><figcaption>Figure 3. CI Pipeline: lint, type check, tests on Python 3.10 & 3.11, Docker smoke test</figcaption></figure><figure><img src="../docs/screenshots/04_cd_pipeline_run.png"><figcaption>Figure 4. CD Pipeline on tag v1.0.0: CI gate, build & push, staging, release, production</figcaption></figure><figure><img src="../docs/screenshots/05_model_validation_run.png"><figcaption>Figure 5. Model Validation: training + RMSE/MAE quality gate</figcaption></figure><figure><img src="../docs/screenshots/06_release_v1.0.0.png"><figcaption>Figure 6. GitHub Release v1.0.0 created by the CD pipeline</figcaption></figure><figure><img src="../docs/screenshots/07_coverage_report_100pct.png"><figcaption>Figure 7. HTML coverage report (CI artifact coverage-report): 100%</figcaption></figure>
+
+<h2 class="pb">3. Testing strategy</h2>
+<h1>Testing Strategy – Movie Rating Prediction API</h1>
+<p><strong>Course:</strong> DDM501 – AI in Production · <strong>Lab 3:</strong> Testing &amp; CI/CD for ML Systems
+<strong>Author:</strong> Vương Xuân Thong (25MS13306)</p>
+<p>This document explains <em>what</em> we test, <em>why</em>, <em>how</em> the tests are organised, and how the CI/CD
+pipeline uses them as quality gates before code or a model reaches production.</p>
+<hr />
+<h2>1. System under test</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model wrapper</td>
+<td><code>app/model.py</code></td>
+<td>Load the pickled Surprise <strong>SVD</strong> model, predict one pair or a batch, clip to 1–5</td>
+</tr>
+<tr>
+<td>API</td>
+<td><code>app/main.py</code></td>
+<td>FastAPI app: <code>/</code>, <code>/health</code>, <code>/predict</code>, <code>/predict/batch</code>, <code>/model/info</code>; model loaded in <code>lifespan</code></td>
+</tr>
+<tr>
+<td>Schemas</td>
+<td><code>app/schemas.py</code></td>
+<td>Pydantic v2 request/response contracts (ID length 1–50, rating 1–5, batch 1–100)</td>
+</tr>
+<tr>
+<td>Config</td>
+<td><code>app/config.py</code></td>
+<td>Paths, versions and server settings, overridable via environment variables</td>
+</tr>
+<tr>
+<td>Training</td>
+<td><code>scripts/train_model.py</code></td>
+<td>MovieLens 100K → SVD (seed 42); writes <code>models/svd_model.pkl</code> + hold-out <code>metrics.json</code></td>
+</tr>
+<tr>
+<td>Model gate</td>
+<td><code>scripts/validate_model.py</code></td>
+<td>Fails if the model does not load, predicts outside 1–5, or misses RMSE/MAE thresholds</td>
+</tr>
+</tbody>
+</table>
+<h2>2. Quality goals and risks</h2>
+<table>
+<thead>
+<tr>
+<th>Risk in an ML service</th>
+<th>Example failure</th>
+<th>Guarded by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Code regressions</td>
+<td>refactor breaks clipping or batch order</td>
+<td>unit tests</td>
+</tr>
+<tr>
+<td>Broken API contract</td>
+<td>field renamed, wrong status code, internals leaked in errors</td>
+<td>integration tests</td>
+</tr>
+<tr>
+<td>Bad training data</td>
+<td>duplicated ratings, ratings outside 1–5, missing IDs</td>
+<td>data tests</td>
+</tr>
+<tr>
+<td>Silently degraded model</td>
+<td>model predicts the mean for everyone; worse than baseline</td>
+<td>behavioural tests + model gate</td>
+</tr>
+<tr>
+<td>Environment drift</td>
+<td>dependency cannot be installed, image does not start</td>
+<td>CI on Python 3.10/3.11, Docker smoke test</td>
+</tr>
+<tr>
+<td>Unsafe release</td>
+<td>untested tag shipped to production</td>
+<td>CD re-runs CI, staging smoke test before release</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Test pyramid</h2>
+<pre><code>                    ▲  System / E2E        Docker smoke tests (CI) + staging smoke tests (CD)
+                   ▲▲▲ Model behaviour     23 tests  – invariance, directional, MFT, performance, robustness
+                 ▲▲▲▲▲ Data quality        32 tests  – schema, ranges, completeness, uniqueness, distribution
+              ▲▲▲▲▲▲▲▲ Integration         44 tests  – every endpoint, validation, error paths, latency
+          ▲▲▲▲▲▲▲▲▲▲▲▲ Unit                63 tests  – model wrapper, schemas, config, helpers
+</code></pre>
+<p><strong>Total: 162 tests, 100% line coverage of <code>app/</code></strong> (gate: ≥ 80%). The full suite runs in about 2 s
+once the model is trained, so there is no reason to skip it locally.</p>
+<h3>3.1 Unit tests – <code>tests/unit/</code> (63)</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Classes</th>
+<th>What is verified</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_model.py</code></td>
+<td><code>TestMovieRatingModel</code> (14)</td>
+<td>load, return type <code>float</code>, 2-decimal rounding, 1–5 range, batch type/length/range/empty, <code>is_loaded</code>, <code>None</code>/empty IDs</td>
+</tr>
+<tr>
+<td></td>
+<td><code>TestModelWithStub</code> (7)</td>
+<td><strong>isolated</strong> tests with a stub model pickled to <code>tmp_path</code>: clipping above 5 and below 1, rounding, order, <code>RuntimeError</code> when unloaded, <code>TypeError</code> for non-string IDs</td>
+</tr>
+<tr>
+<td></td>
+<td><code>TestModelFileHandling</code> (3), <code>TestModelSingleton</code> (1)</td>
+<td>missing / corrupt file, stored path, <code>get_model()</code> singleton and <code>reset_model()</code></td>
+</tr>
+<tr>
+<td><code>test_schemas.py</code></td>
+<td>5 classes (32)</td>
+<td>required fields, empty / whitespace / <code>None</code>, stripping, 50-char limit and boundary, no int→str coercion, rating bounds 1.0/5.0, batch 1–100 and boundaries, nested validation</td>
+</tr>
+<tr>
+<td><code>test_utils.py</code></td>
+<td><code>TestConfig</code> (4), <code>TestMainHelpers</code> (2)</td>
+<td>env-var overrides, defaults, 503 helper, startup failure leaves API alive but unhealthy</td>
+</tr>
+</tbody>
+</table>
+<p>The stub-model tests make the unit layer independent of training and cover branches the real model
+never reaches (e.g. a raw estimate of 7.3 must be clipped to 5.0).</p>
+<h3>3.2 Integration tests – <code>tests/integration/test_api.py</code> (44)</h3>
+<p>The FastAPI app is exercised through <code>TestClient</code> <strong>inside a <code>with</code> block</strong>, so the <code>lifespan</code> handler
+loads the real model exactly as in production (the starter's bare <code>TestClient(app)</code> skipped startup and
+every <code>/predict</code> returned 503).</p>
+<ul>
+<li>Happy paths for all 5 endpoints, response structure and echoes, <code>model_version</code>, OpenAPI schema.</li>
+<li>API result equals a direct model call (no hidden transformation); batch equals single predictions;
+  batch preserves order.</li>
+<li>Validation: missing fields, empty body, invalid JSON, integer IDs, every invalid fixture, 10 000-char
+  IDs, empty / &gt;100 batches → <strong>422</strong> with the offending field in <code>detail</code>.</li>
+<li>Error handling: 404, 405 (<code>GET /predict</code>, <code>POST /health</code>), <strong>503</strong> when the model is missing
+  (also <code>/health</code> → unhealthy), <strong>500</strong> when prediction raises – and the internal exception text is
+  <em>not</em> leaked to the client. CORS header present.</li>
+<li>Non-functional: p95 latency of <code>/predict</code> through the HTTP stack &lt; 50 ms.</li>
+</ul>
+<h3>3.3 Data tests – <code>tests/data/test_data_quality.py</code> (32)</h3>
+<p>Two data sources:</p>
+<ol>
+<li><code>sample_ratings</code> (fixture) – the lab's required checks: range, negatives, maximum, missing IDs,
+   ID types, nulls/NaN, required fields, mean 2.0–4.5, 0 &lt; std &lt; 2.0, distinct values, unique
+   (user, movie) pairs, multiple users/movies, numeric types.</li>
+<li><strong>The real MovieLens 100K file the model is trained on</strong> – a data contract: exactly 100 000 rows,
+   schema, ratings ∈ {1,2,3,4,5}, no missing IDs, no duplicate pairs, 943 users / 1 682 movies,
+   every user ≥ 20 ratings, mean 3.0–4.0, std 0.8–1.4, no star value &gt; 50%, timestamps inside the
+   collection period, and the "known pairs" used by model tests really exist with those ratings.</li>
+</ol>
+<p><code>TestDataValidationCatchesBadData</code> feeds corrupted records to the rules to prove the checks can fail
+(a test that can never fail protects nothing).</p>
+<h3>3.4 Model behavioural tests – <code>tests/model/test_model_behavior.py</code> (23)</h3>
+<p>Following the CheckList methodology:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Tests</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Invariance</strong></td>
+<td>same input → same output (×2, ×5); batch order does not change per-pair results; batch = individual; a pair's score does not depend on its batch neighbours</td>
+</tr>
+<tr>
+<td><strong>Directional</strong></td>
+<td>different users / movies → different predictions; for &gt; 100 users who gave both 5★ and 1★, the 5★ movie is predicted higher in ≥ 95% of cases; for a new user, acclaimed movies (A Close Shave, Schindler's List, The Wrong Trousers) score above poorly rated ones</td>
+</tr>
+<tr>
+<td><strong>Minimum functionality</strong></td>
+<td>known users predicted in range; predictions not all identical; unknown users / movies get a valid fallback; unknown user + movie → global mean (≈ 3.53)</td>
+</tr>
+<tr>
+<td><strong>Performance</strong></td>
+<td>MAE &lt; 1.0 on 1 000 real ratings; no error &gt; 3.0 on known pairs; hold-out RMSE &lt; 0.95 and MAE &lt; 0.75; better than the global-mean baseline</td>
+</tr>
+<tr>
+<td><strong>Robustness</strong></td>
+<td>numeric strings, leading zeros (<code>"001"</code> is a different, unknown user – documented), Unicode and 500-char IDs</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why "≥ 80% within 1.5 stars" instead of "every pair within 1.5":</strong> the starter suggested every known
+pair should be within 1.5 stars. User 166 rated movie 346 one star, but SVD predicts ≈ 2.8 because
+it regularises towards user and item means. Loosening the tolerance until it passes would hide
+information, so the test asserts what a good collaborative-filtering model can actually guarantee
+(most pairs close, none absurd) and the real accuracy requirement is moved to a proper hold-out set
+(<code>test_holdout_metrics_meet_thresholds</code>).</p>
+<h3>3.5 System / end-to-end tests (in the pipelines)</h3>
+<ul>
+<li><strong>CI <code>docker</code> job:</strong> builds the multi-stage image, runs it, checks <code>/health</code> reports
+  <code>model_loaded: true</code>, a valid <code>/predict</code>, a 422 for a bad request, and waits for Docker's own
+  <code>HEALTHCHECK</code> to report <code>healthy</code>.</li>
+<li><strong>CD <code>deploy-staging</code> job:</strong> pulls the image that was just pushed (by digest), runs it and smoke-tests
+  <code>/health</code>, <code>/predict</code>, <code>/predict/batch</code>, <code>/model/info</code> before a release is created.</li>
+</ul>
+<h2>4. Fixtures and test data</h2>
+<p>All shared fixtures live in <code>tests/conftest.py</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Fixture</th>
+<th>Scope</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_client</code></td>
+<td>session</td>
+<td><code>TestClient</code> with lifespan → real model loaded once</td>
+</tr>
+<tr>
+<td><code>trained_model</code></td>
+<td>session</td>
+<td><code>MovieRatingModel()</code>; skips with a clear message if not trained</td>
+</tr>
+<tr>
+<td><code>model_metrics</code></td>
+<td>session</td>
+<td>hold-out metrics from <code>models/metrics.json</code></td>
+</tr>
+<tr>
+<td><code>movielens_ratings</code></td>
+<td>session</td>
+<td>the 100 000 real ratings (skips if the dataset is not downloaded)</td>
+</tr>
+<tr>
+<td><code>sample_*</code>, <code>invalid_prediction_requests</code>, <code>known_user_movie_pairs</code>, <code>unknown_users/movies</code></td>
+<td>function</td>
+<td>small deterministic inputs</td>
+</tr>
+</tbody>
+</table>
+<p>Determinism: the model is trained with <code>random_state=42</code>, samples use <code>random.Random(seed)</code>, so the
+suite gives identical results on every run and platform.</p>
+<h2>5. Quality gates in CI/CD</h2>
+<pre><code>push / PR ─► Lint (pre-commit: black, isort, flake8, mypy, hygiene) ─┐
+          ─► Type check (mypy, disallow-untyped-defs) ───────────────┤
+                                                                     ▼
+             Tests on Python 3.10 &amp; 3.11: train ► model gate ► 162 tests ► coverage ≥ 80%
+                                                                     ▼
+             Docker: build multi-stage image ► smoke test ► HEALTHCHECK healthy
+
+tag v* ─► CI (reused) ► build &amp; push GHCR ► staging smoke test ► GitHub Release ► production
+
+model/script/dependency change, weekly ─► Model Validation: 5-fold CV ► RMSE ≤ 0.95, MAE ≤ 0.75
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>Threshold</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Formatting / lint</td>
+<td>black, isort, flake8 clean</td>
+<td>pre-commit hook + CI <code>lint</code></td>
+</tr>
+<tr>
+<td>Types</td>
+<td>mypy, no untyped defs in <code>app/</code>, <code>scripts/</code></td>
+<td>pre-commit + CI <code>type-check</code></td>
+</tr>
+<tr>
+<td>Tests</td>
+<td>162/162 pass on 3.10 and 3.11</td>
+<td>CI <code>test</code></td>
+</tr>
+<tr>
+<td>Coverage</td>
+<td>≥ 80% (<code>--cov-fail-under=80</code>, <code>fail_under</code> in <code>pyproject.toml</code>)</td>
+<td>CI <code>test</code></td>
+</tr>
+<tr>
+<td>Model quality</td>
+<td>hold-out RMSE ≤ 0.95, MAE ≤ 0.75</td>
+<td>CI <code>test</code>, Model Validation workflow</td>
+</tr>
+<tr>
+<td>Runtime</td>
+<td>container healthy, endpoints respond</td>
+<td>CI <code>docker</code>, CD <code>deploy-staging</code></td>
+</tr>
+</tbody>
+</table>
+<h2>6. Running the tests</h2>
+<pre><code class="language-bash">pip install -r requirements.txt -r requirements-dev.txt
+python scripts/train_model.py            # once: downloads MovieLens 100K, trains, writes metrics
+pytest tests/ --cov=app --cov-report=html  # full suite + HTML report in htmlcov/
+pytest tests/unit/ -v                     # one layer
+pytest -m integration                     # by marker
+pre-commit run --all-files                # everything CI's lint job runs
+</code></pre>
+<h2>7. Policies</h2>
+<ul>
+<li><strong>New code ships with tests</strong>; coverage may not drop below 80% (the build fails).</li>
+<li><strong>Flaky tests are bugs:</strong> tests use fixed seeds and no wall-clock assumptions except the generous
+  50 ms latency check; a flaky test is fixed or quarantined with an issue, never retried silently.</li>
+<li><strong>Tests must be able to fail:</strong> every rule-based check has a negative test.</li>
+<li><strong>Model changes</strong> go through the Model Validation workflow; thresholds change only in a reviewed PR.</li>
+</ul>
+<h2>8. Limitations and next steps</h2>
+<ul>
+<li>Load testing (Locust/k6) against the container to validate throughput, not just single-request latency.</li>
+<li>Mutation testing (<code>mutmut</code>) to measure test strength beyond line coverage.</li>
+<li>Fairness/slice tests (e.g. error by user activity level) and drift tests on new rating logs.</li>
+<li>Contract tests for API consumers (schemathesis on the OpenAPI schema).</li>
+</ul>
+
+<h2 class="pb">4. Coverage report</h2>
+<h1>Test Coverage Report</h1>
+<p><strong>Line coverage of <code>app/</code>: 100%</strong> (162 tests passed) · CI gate: <code>--cov-fail-under=80</code> and
+<code>fail_under = 80</code> in <code>pyproject.toml</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th style="text-align: right;">Stmts</th>
+<th style="text-align: right;">Miss</th>
+<th style="text-align: right;">Cover</th>
+<th style="text-align: right;">Missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>app/__init__.py</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>app/config.py</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>app/main.py</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>app/model.py</td>
+<td style="text-align: right;">42</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>app/schemas.py</td>
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td><strong>TOTAL</strong></td>
+<td style="text-align: right;"><strong>142</strong></td>
+<td style="text-align: right;"><strong>0</strong></td>
+<td style="text-align: right;"><strong>100%</strong></td>
+<td style="text-align: right;"></td>
+</tr>
+</tbody>
+</table>
+<p>Generated with:</p>
+<pre><code class="language-bash">python scripts/train_model.py --skip-cv
+pytest tests/ --cov=app --cov-report=term-missing --cov-report=html --cov-fail-under=80
+</code></pre>
+<ul>
+<li>Every CI run (Python 3.10 and 3.11) prints this table in the job summary and uploads the full
+  <strong>HTML report</strong> (<code>htmlcov/</code>), <code>coverage.xml</code> and <code>junit.xml</code> as the artifact
+  <strong><code>coverage-report</code></strong> (Actions → CI Pipeline → run → <em>Artifacts</em>).</li>
+<li>Tests per layer: unit 63 · integration 44 · data 32 · model behaviour 23.</li>
+<li>The only excluded line is <code>if __name__ == "__main__":</code> in <code>app/main.py</code> (local dev server entry point).</li>
+</ul>
+</body></html>

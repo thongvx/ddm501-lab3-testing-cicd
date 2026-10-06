@@ -23,6 +23,7 @@ MovieLens 100K).
 | Coverage report (100%, gate ≥ 80%) | [`docs/COVERAGE.md`](docs/COVERAGE.md) · HTML report = CI artifact `coverage-report` |
 | Testing strategy document | [`docs/TESTING_STRATEGY.md`](docs/TESTING_STRATEGY.md) |
 | Screenshots of passing workflows | [`docs/screenshots/`](docs/screenshots) |
+| Submission PDF (rubric checklist + screenshots + strategy) | [`DDM501_Lab3_25MS13306_VuongXuanThong.pdf`](DDM501_Lab3_25MS13306_VuongXuanThong.pdf) |
 
 ## Project structure
 
