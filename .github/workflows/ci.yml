@@ -37,7 +37,7 @@ jobs:
   # ===========================================================================
   lint:
     name: Lint (pre-commit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -75,7 +75,7 @@ jobs:
   # ===========================================================================
   type-check:
     name: Type Check (mypy)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -101,7 +101,7 @@ jobs:
   # ===========================================================================
   test:
     name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint, type-check]
     strategy:
       fail-fast: false
@@ -174,7 +174,7 @@ jobs:
   # ===========================================================================
   docker:
     name: Build & Smoke-test Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test]
     steps:
       - name: Checkout code
