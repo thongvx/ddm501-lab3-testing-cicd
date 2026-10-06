@@ -108,6 +108,18 @@ docker pull ghcr.io/thongvx/movie-rating-api:1.0.1
 
 Rollback = redeploy the previous immutable tag (`vX.Y.Z` / `sha-<commit>`).
 
+## Screenshots of passing workflows
+
+| | |
+|---|---|
+| **All workflows green** (CI on `main` + `develop`, Model Validation, CD on tag `v1.0.0`) | ![actions](docs/screenshots/02_actions_all_workflows.png) |
+| **CI Pipeline**: lint → type check → tests (3.10, 3.11) → Docker smoke test | ![ci](docs/screenshots/03_ci_pipeline_run.png) |
+| **CD Pipeline**: CI gate → build & push (GHCR) → staging → release → production | ![cd](docs/screenshots/04_cd_pipeline_run.png) |
+| **Model Validation**: train + RMSE/MAE gate | ![model](docs/screenshots/05_model_validation_run.png) |
+| **GitHub Release v1.0.0** created by CD | ![release](docs/screenshots/06_release_v1.0.0.png) |
+| **Coverage report** (HTML, artifact `coverage-report`) | ![coverage](docs/screenshots/07_coverage_report_100pct.png) |
+| **Repository with passing badges** | ![repo](docs/screenshots/01_repo_readme_badges.png) |
+
 ## Code quality
 
 * **pre-commit** (`pre-commit run --all-files`): trailing whitespace, EOF, YAML/JSON/TOML, large files,
