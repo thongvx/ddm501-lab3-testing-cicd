@@ -1,0 +1,11 @@
+.git
+.github
+tests
+docs
+htmlcov
+.pytest_cache
+.mypy_cache
+**/__pycache__
+models/*.pkl
+coverage.xml
+.coverage

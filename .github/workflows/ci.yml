@@ -1,0 +1,225 @@
+# =============================================================================
+# CI Pipeline for Movie Rating API
+# DDM501 - Lab 3: Testing & CI/CD
+#
+#   lint ──┐
+#          ├──> test (py3.10, py3.11) ──> docker (build + smoke test)
+#   types ─┘
+#
+# Also callable from the CD workflow (workflow_call) so a release is only built
+# from code that passed exactly these checks.
+# =============================================================================
+
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # ===========================================================================
+  # Lint: the same pre-commit hooks developers run locally
+  # (black, isort, flake8, mypy, file hygiene). Unit tests run in the test job.
+  # ===========================================================================
+  lint:
+    name: Lint (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit==3.6.0
+
+      - name: Run pre-commit hooks
+        env:
+          SKIP: pytest-unit
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Flake8 / Black / isort (explicit report)
+        run: |
+          pip install flake8==7.0.0 black==23.12.1 isort==5.13.2
+          flake8 app/ tests/ scripts/ --statistics
+          black --check app/ tests/ scripts/
+          isort --check-only app/ tests/ scripts/
+
+  # ===========================================================================
+  # Type checking
+  # ===========================================================================
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy==1.8.0 types-requests==2.31.0
+
+      - name: Run mypy
+        run: mypy app/ scripts/
+
+  # ===========================================================================
+  # Tests: unit, integration, data, model behaviour + coverage gate (>= 80%)
+  # ===========================================================================
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [lint, type-check]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Cache MovieLens dataset
+        uses: actions/cache@v6
+        with:
+          path: ~/.surprise_data
+          key: movielens-100k-v1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Train model
+        run: python scripts/train_model.py --skip-cv
+
+      - name: Validate model quality gate
+        run: python scripts/validate_model.py
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v \
+            --cov=app --cov-report=term-missing \
+            --cov-report=xml --cov-report=html \
+            --cov-fail-under=80 \
+            --junitxml=junit.xml
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Coverage (Python ${{ matrix.python-version }})" >> "$GITHUB_STEP_SUMMARY"
+          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          r = ET.parse("junit.xml").getroot()
+          s = r if r.tag == "testsuite" else r.find("testsuite")
+          print(f"**Tests:** {s.get('tests')} run, {s.get('failures')} failed, "
+                f"{s.get('errors')} errors, {s.get('skipped')} skipped")
+          PY
+
+      - name: Upload coverage report
+        if: always() && matrix.python-version == '3.10'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            htmlcov/
+            coverage.xml
+            junit.xml
+          retention-days: 30
+
+  # ===========================================================================
+  # Build the Docker image and smoke-test the running container
+  # ===========================================================================
+  docker:
+    name: Build & Smoke-test Docker Image
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: movie-rating-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container
+        run: |
+          docker run -d -p 8000:8000 --name test-api movie-rating-api:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8000/health && break
+            sleep 2
+          done
+          echo
+          curl -fsS http://localhost:8000/health | grep -q '"model_loaded":true'
+          curl -fsS -X POST http://localhost:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"user_id": "196", "movie_id": "242"}' | tee /tmp/predict.json
+          python3 -c "import json; r=json.load(open('/tmp/predict.json')); assert 1 <= r['predicted_rating'] <= 5"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/predict \
+            -H 'Content-Type: application/json' -d '{"movie_id": "242"}')
+          test "$code" = "422"
+
+      - name: Wait for Docker HEALTHCHECK
+        run: |
+          for i in $(seq 1 20); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' test-api)
+            echo "health: $status"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 3
+          done
+          docker logs test-api
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f test-api || true

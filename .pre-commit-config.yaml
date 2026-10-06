@@ -1,0 +1,85 @@
+# =============================================================================
+# Pre-commit hooks configuration
+# DDM501 - Lab 3: Testing & CI/CD
+#
+# Setup:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually:
+#   pre-commit run --all-files
+#
+# The same hooks run in CI (job "Lint & pre-commit"), so a commit that passes
+# locally also passes the lint stage of the pipeline.
+# =============================================================================
+
+repos:
+  # ===========================================================================
+  # Standard pre-commit hooks
+  # ===========================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: debug-statements
+
+  # ===========================================================================
+  # 1: Black formatter
+  # ===========================================================================
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        args: ['--line-length=100']
+
+  # ===========================================================================
+  # 2: isort for import sorting
+  # ===========================================================================
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--profile=black', '--line-length=100']
+
+  # ===========================================================================
+  # 3: Flake8 linter (config in .flake8)
+  # ===========================================================================
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+
+  # ===========================================================================
+  # 4: mypy type checker (BONUS) - app/ and scripts/ must be fully typed
+  # ===========================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        files: ^(app|scripts)/
+        additional_dependencies:
+          - types-requests
+          - pydantic==2.5.2
+          - fastapi==0.104.1
+        args: ['--ignore-missing-imports', '--disallow-untyped-defs']
+
+  # ===========================================================================
+  # 5: pytest hook (BONUS) - fast unit tests before every commit
+  # (skipped in CI with SKIP=pytest-unit because the test job runs the full suite)
+  # ===========================================================================
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest (unit tests)
+        entry: python -m pytest tests/unit/ -q --no-cov -p no:cacheprovider
+        language: system
+        pass_filenames: false
+        always_run: true
